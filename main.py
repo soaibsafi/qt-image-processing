@@ -1,12 +1,21 @@
+from MouseTraker import MouseTracker
+
+from skimage import color
+import cv2
+import numpy as np
+import math
+import csv
 from PyQt5 import QtGui
-from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter
-from PyQt5.QtCore import QDateTime, Qt, QTimer
+from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter, QColor
+from PyQt5.QtCore import QDateTime, Qt, QTimer, QPoint
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
         QDial, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
         QProgressBar, QPushButton, QRadioButton, QScrollBar, QSizePolicy,
         QSlider, QSpinBox, QStyleFactory, QTableWidget, QTabWidget, QTextEdit,
-        QVBoxLayout, QWidget,  QPlainTextEdit, QScrollArea, QFileDialog)
+        QVBoxLayout, QWidget,  QPlainTextEdit, QScrollArea, QFileDialog, QMainWindow)
 
+global colorDetailsList
+colorDetailsList = [['RGB'], ['HSV'], ['LAB']]
 class WidgetSetup(QDialog):
     def __init__(self, parent=None):
         super(WidgetSetup, self).__init__(parent)
@@ -19,14 +28,28 @@ class WidgetSetup(QDialog):
         # Top Layout
         openDirectory = QPushButton('Open Directory')
         openDirectory.clicked.connect(self.openDirectory)
+
         saveImage = QPushButton('Save Image')
+        saveImage.clicked.connect(self.save_image)
+
         topLayout = QHBoxLayout()
         topLayout.addWidget(openDirectory)
         topLayout.addWidget(saveImage)
 
         #Image Viewer Layout
+        self.img = QImage('sample.jpg')
+        self.pixmap = QPixmap(QPixmap.fromImage(self.img))
         imageLabel = QLabel()
-        imageLabel.setPixmap(QPixmap("sample.jpg"))
+        imageLabel.setPixmap(self.pixmap)
+        imageLabel.mousePressEvent = self.getPixel
+
+        tracker = MouseTracker(imageLabel)
+        tracker.positionChanged.connect(self.on_positionChanged)
+
+        self.label_position = QLabel(
+            imageLabel, alignment=Qt.AlignCenter
+        )
+        self.label_position.setStyleSheet('background-color: white; border: 1px solid black')
 
         #self.resize(800, 600)
 
@@ -37,6 +60,16 @@ class WidgetSetup(QDialog):
         self.colorValuesGroup()
         self.colorThreshold1()
         self.colorThreshold2()
+        lineEditRGB.setStyleSheet("color: black;  background-color: red")
+        lineEditRGB.setAlignment(Qt.AlignCenter)
+
+        lineEditHSV.setStyleSheet("color: black;  background-color: red")
+        lineEditHSV.setAlignment(Qt.AlignCenter)
+
+        lineEditLAB.setStyleSheet("color: black;  background-color: red")
+        lineEditLAB.setAlignment(Qt.AlignCenter)
+
+        saveColorValue.clicked.connect(self.save_csv_file)
 
         # Main Layout
         mainLayout = QGridLayout()
@@ -54,20 +87,29 @@ class WidgetSetup(QDialog):
         self.colorValuesGroup = QGroupBox('Color Values')
 
         labelRGB = QLabel('RGB')
+        global lineEditRGB
         lineEditRGB = QLineEdit()
         lineEditRGB.setReadOnly(True)
 
         labelHSV = QLabel('HSV')
+        global lineEditHSV
+
         lineEditHSV = QLineEdit()
         lineEditHSV.setReadOnly(True)
 
         labelLAB = QLabel('LAB')
+        global lineEditLAB
         lineEditLAB = QLineEdit()
         lineEditLAB.setReadOnly(True)
 
+        global colorDetails
         colorDetails = QPlainTextEdit()
         colorDetails.setReadOnly(True)
+        colorDetails.setPlaceholderText('Nr. RGB HSV LAB')
+        colorDetails.setPlainText("Nr  RGB  HSV  LAB")
 
+
+        global saveColorValue
         saveColorValue = QPushButton('Save Color Values')
 
         layout = QGridLayout()
@@ -191,10 +233,83 @@ class WidgetSetup(QDialog):
                 return
 
             print(image)
+    def getPixel(self, event):
+        x = event.pos().x()
+        y = event.pos().y()
+        #print(x,y)
+        c = self.img.pixel(x, y)  # color code (integer): 3235912
+        # depending on what kind of value you like (arbitary examples)
+        c_qobj = QColor(c)  # color object
+        c_rgb = QColor(c).getRgb()  # 8bit RGBA: (255, 23, 0, 255)
+        r = c_qobj.red()
+        g = c_qobj.green()
+        b = c_qobj.blue()
+        colrgb = np.uint8([[[r,g,b]]])
+
+        HSV = cv2.cvtColor(colrgb, cv2.COLOR_RGB2HSV)
+        H = (HSV[0,0,0] * 2)
+        S = (HSV[0,0,1]  / 255.0)
+        V = (HSV[0,0,2] / 255.0)
+
+        LAB = cv2.cvtColor(colrgb, cv2.COLOR_RGB2Lab)
+        L = (LAB[0][0][0] * 100//255.0)
+        A = (LAB[0][0][1] - 128)
+        B = (LAB[0][0][2] - 128)
+
+        rgbText = "%d, %d, %d" % (r,g,b)
+        hsvText = "%d, %d, %d" % (H,S,V)
+        labText = "%d, %d, %d" % (L,A,B)
+
+        lineEditRGB.setText(rgbText)
+        lineEditHSV.setText(hsvText)
+        lineEditLAB.setText(labText)
+
+        #colText = colorDetails.toPlainText()
+        colorDetailsList[0].append(rgbText)
+        colorDetailsList[1].append(hsvText)
+        colorDetailsList[2].append(labText)
+        text = rgbText+'    '+hsvText+'    '+labText
+        colorDetails.appendPlainText(text)
+        #print(text)
+
+    #@QtCore.pyqtSlot(QPoint)
+    def on_positionChanged(self, pos):
+        delta = QPoint(-25, 30)
+        self.label_position.show()
+        self.label_position.move(pos + delta)
+
+        c = self.img.pixel(pos.x(), pos.y())  # color code (integer): 3235912
+        # depending on what kind of value you like (arbitary examples)
+        c_qobj = QColor(c)  # color object
+        c_rgb = QColor(c).getRgb()
+        r = c_qobj.red()
+        g = c_qobj.green()
+        b = c_qobj.blue()
+        #self.label_position.setText("(%d, %d)" % (pos.x(), pos.y()))
+        self.label_position.setText("(%d, %d, %d)" % (r,g,b))
+        self.label_position.adjustSize()
+
+    def save_csv_file(self):
+        options = QFileDialog.Options()
+        # fileName = QFileDialog.getOpenFileName(self, "Open File", QDir.currentPath())
+        fileName, _ = QFileDialog.getSaveFileName(self, 'QFileDialog.getSaveFileName()', '',
+                                                  'File (*.csv)', options=options)
+        with open(fileName, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(colorDetailsList)
+        f.close()
+        colorDetailsList.clear()
+        #print(colorDetailsList)
+
+    def save_image(self):
+        options = QFileDialog.Options()
+        # fileName = QFileDialog.getOpenFileName(self, "Open File", QDir.currentPath())
+        fileName, _ = QFileDialog.getSaveFileName(self, 'QFileDialog.getSaveFileName()', '',
+                                                  'Images (*.png *.jpeg *.jpg *.bmp *.gif)', options=options)
+        self.pixmap.save(fileName)
+        #QFileDialog.saveFileContent( fileContent)
 if __name__ == '__main__':
-
     import sys
-
     app = QApplication(sys.argv)
     gallery = WidgetSetup()
     gallery.show()
