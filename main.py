@@ -2,12 +2,14 @@ from MouseTraker import MouseTracker
 
 from skimage import color
 import cv2
+import os
+import re
 import numpy as np
 import math
 import csv
-from PyQt5 import QtGui
-from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter, QColor
-from PyQt5.QtCore import QDateTime, Qt, QTimer, QPoint
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import QImage, QPixmap, QPalette, QPainter, QColor, QKeyEvent
+from PyQt5.QtCore import QDateTime, Qt, QTimer, QPoint, QEvent
 from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
         QDial, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
         QProgressBar, QPushButton, QRadioButton, QScrollBar, QSizePolicy,
@@ -16,9 +18,11 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
 
 global colorDetailsList
 colorDetailsList = [['RGB'], ['HSV'], ['LAB']]
+
 class WidgetSetup(QDialog):
     def __init__(self, parent=None):
         super(WidgetSetup, self).__init__(parent)
+        QtWidgets.qApp.installEventFilter(self)
 
         #self.setGeometry(300, 300, 350, 250)
         self.setWindowTitle('QLabel')
@@ -37,8 +41,9 @@ class WidgetSetup(QDialog):
         topLayout.addWidget(saveImage)
 
         #Image Viewer Layout
-        self.img = QImage('sample.jpg')
+        self.img = QImage('D:\\Cloud\\Github\\Qt-image-processor\\sdfsd.png')
         self.pixmap = QPixmap(QPixmap.fromImage(self.img))
+        global imageLabel
         imageLabel = QLabel()
         imageLabel.setPixmap(self.pixmap)
         imageLabel.mousePressEvent = self.getPixel
@@ -51,7 +56,7 @@ class WidgetSetup(QDialog):
         )
         self.label_position.setStyleSheet('background-color: white; border: 1px solid black')
 
-        #self.resize(800, 600)
+        self.resize(800, 600)
 
         imageLayout = QGridLayout()
         imageLayout.addWidget(imageLabel,0,0)
@@ -80,7 +85,6 @@ class WidgetSetup(QDialog):
         mainLayout.addWidget(self.colorThreshold2, 2, 2)
 
         self.setLayout(mainLayout)
-
 
 
     def colorValuesGroup(self):
@@ -223,16 +227,24 @@ class WidgetSetup(QDialog):
     def openDirectory(self):
         options = QFileDialog.Options()
         # fileName = QFileDialog.getOpenFileName(self, "Open File", QDir.currentPath())
-        fileName, _ = QFileDialog.getOpenFileName(self, 'QFileDialog.getOpenFileName()', '',
-                                                  'Images (*.png *.jpeg *.jpg *.bmp *.gif)', options=options)
-        print(fileName)
+        fileName, _ = QFileDialog.getOpenFileName(self, 'QFileDialog.getOpenFileName()', '', 'Images (*.png *.jpeg *.jpg *.bmp *.gif)', options=options)
+
+        #print(fileName[0])
         if fileName:
             image = QImage(fileName)
             if image.isNull():
                 QMessageBox.information(self, "Image Viewer", "Cannot load %s." % fileName)
                 return
 
-            print(image)
+        global imgName, imgDir
+        splitimage = fileName.split('/')
+
+        imgName = "\\".join(splitimage)
+        imgDir = "\\".join(splitimage[:-1])
+
+        #print(imgDir)
+        self.set_image(imgName)
+
     def getPixel(self, event):
         x = event.pos().x()
         y = event.pos().y()
@@ -306,8 +318,48 @@ class WidgetSetup(QDialog):
         # fileName = QFileDialog.getOpenFileName(self, "Open File", QDir.currentPath())
         fileName, _ = QFileDialog.getSaveFileName(self, 'QFileDialog.getSaveFileName()', '',
                                                   'Images (*.png *.jpeg *.jpg *.bmp *.gif)', options=options)
-        self.pixmap.save(fileName)
+        pixmap_r.save(fileName)
         #QFileDialog.saveFileContent( fileContent)
+
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.KeyPress:
+            key = event.key()
+            if key == Qt.Key_Right:
+                self.get_next_image()
+            elif key == Qt.Key_Left:
+                self.get_previous_image()
+            return True
+        return super(WidgetSetup, self).eventFilter(source, event)
+
+    def get_next_image(self):
+        print('Next Image')
+
+        images = self.load_images_from_folder(imgDir)
+        print(images)
+        print(imgName)
+        if imgName in images:
+            i = images.index(imgName)+1
+            self.set_image(images[i])
+
+
+    def get_previous_image(self):
+        print('Previous Image')
+
+    def load_images_from_folder(self, folder):
+        images = []
+        for filename in os.listdir(folder):
+            img = os.path.join(folder, filename)
+            if img is not None:
+                images.append(img)
+
+        r = re.compile(".*\.(jpg|png|jpeg|bmp|gif)")
+        imagelist = list(filter(r.match, images))
+        return imagelist
+
+    def set_image(self, filename):
+        pixmap = QPixmap(filename)
+        pixmap_r = pixmap.scaled(800, 600, Qt.KeepAspectRatio)
+        imageLabel.setPixmap(QPixmap(pixmap_r))
 if __name__ == '__main__':
     import sys
     app = QApplication(sys.argv)
